@@ -3,7 +3,9 @@ MipsROPSearch
 
 Assists in finding ROP gadgets in output from objdump
 
-MipsROPSearch.py LIBC_FILE INSTRUCTION JUMP_REGISTER [DISALLOWED_REGISTERS]
+MipsROPSearch.py FILE INSTRUCTION JUMP_REGISTER [DISALLOWED_REGISTERS]
+
+#### FILE: path to a file created by running *objdump -d* on a MIPS binary and outputting it to a file
 
 #### INSTRUCTION: must be surrounded with quotes
 - should be of the form: "OPERATOR REGISTER"
