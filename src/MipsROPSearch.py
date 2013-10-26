@@ -5,7 +5,7 @@ from ObjdumpFunction import ObjdumpFunction
 from Instruction import Instruction
 import Utils
 
-def extractFunctionsFromObjDumpLines(objdumpLines):
+def extractFunctionsFromObjdumpLines(objdumpLines):
     # we only care about the .text section, so we'll find where it is so we know where to start from
     startOfTextSection = 0
     for i in range(len(objdumpLines)):
@@ -16,9 +16,9 @@ def extractFunctionsFromObjDumpLines(objdumpLines):
     functions = []
     function = None
     for line in objdumpLines[startOfTextSection:]:
-        if Instruction.firstLinePattern.match(line):
+        if Instruction.FIRST_LINE_PATTERN.match(line):
             function = ObjdumpFunction(line)
-        elif Instruction.instructionLinePattern.match(line):
+        elif Instruction.INSTRUCTION_LINE_PATTERN.match(line):
             function.addLine(line)
         elif line == "\n":
             # no long in a function block
@@ -31,22 +31,33 @@ def extractFunctionsFromObjDumpLines(objdumpLines):
             break
     return functions
 
+def printHelpMessage(additionalLines=None):
+    print "\nUsage: MipsROPSearch FILE INSTRUCTION [JUMP_REGISTER] [DISALLOWED_REGISTERS]\n"
+    if additionalLines:
+        for line in additionalLines:
+            print "\t%s" % line
+        print ""
+
 def main():
     if len(sys.argv) < 3 or (len(sys.argv) > 1 and sys.argv[1] == "--help"):
-        # TODO: also display if an exception occurs when reading args
-        print "\n\tUsage: python MipsROPSearch LIBC_FILE INSTRUCTION JUMP_REGISTER [DISALLOWED_REGISTERS]\n"
-        return
+        printHelpMessage()
+        exit()
 
     fileName = sys.argv[1]
-    f = open(fileName, 'r')
-    objDumpLines = f.readlines()
-    f.close()
+    objdumpLines = []
+    try:
+        f = open(fileName, 'r')
+        objdumpLines = f.readlines()
+        f.close()
+    except IOError as e:
+        printHelpMessage([e])
+        exit()
 
-    functions = extractFunctionsFromObjDumpLines(objDumpLines)
+    functions = extractFunctionsFromObjdumpLines(objdumpLines)
 
     jumpRegister = sys.argv[3] if len(sys.argv)>3 else None
 
-    disallowedRegisters = Utils.buildRegisterListFromPattern(sys.argv[4]) if len(sys.argv)>4 else []
+    disallowedRegisters = Utils.buildRegisterListFromPattern(sys.argv[4]) if len(sys.argv) > 4 else []
 
     for function in functions:
         function.extractJumpBlocks()
