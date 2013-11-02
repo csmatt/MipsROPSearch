@@ -5,10 +5,12 @@ from ObjdumpFunction import ObjdumpFunction
 from Instruction import Instruction
 import Utils
 
+
 def extractFunctionsFromObjdumpLines(objdumpLines):
+    """Returns a list of ObjdumpFunctions created by parsing lines from objump output's .text section"""
     # we only care about the .text section, so we'll find where it is so we know where to start from
     startOfTextSection = 0
-    for i in range(len(objdumpLines)):
+    for i in xrange(len(objdumpLines)):
         if objdumpLines[i] == "Disassembly of section .text:\n":
             startOfTextSection = i+2
             break
@@ -19,7 +21,7 @@ def extractFunctionsFromObjdumpLines(objdumpLines):
         if Instruction.FIRST_LINE_PATTERN.match(line):
             function = ObjdumpFunction(line)
         elif Instruction.INSTRUCTION_LINE_PATTERN.match(line):
-            function.addLine(line)
+            function.addInstruction(line)
         elif line == "\n":
             # no long in a function block
             if function:
@@ -31,12 +33,14 @@ def extractFunctionsFromObjdumpLines(objdumpLines):
             break
     return functions
 
+
 def printHelpMessage(additionalLines=None):
     print "\nUsage: MipsROPSearch FILE INSTRUCTION [JUMP_REGISTER] [DISALLOWED_REGISTERS]\n"
     if additionalLines:
         for line in additionalLines:
             print "\t%s" % line
         print ""
+
 
 def main():
     if len(sys.argv) < 3 or (len(sys.argv) > 1 and sys.argv[1] == "--help"):

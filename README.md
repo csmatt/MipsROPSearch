@@ -19,3 +19,6 @@ MipsROPSearch.py FILE INSTRUCTION JUMP_REGISTER [DISALLOWED_REGISTERS]
 #### DISALLOWED_REGISTERS
 - registers that ROP gadgets aren't allowed to change
 - can be a single register or pattern or both separated by commas: ex: a0,s*,t4-t8
+
+#### EXAMPLES
+- MipsROPSearch.py libc.objdump "lw s*" t9 t2-t4 # finds gadgets that jump to $t9, don't change values of t2,t3,t4 and contain instructions loading a word into any s-register

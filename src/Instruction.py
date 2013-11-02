@@ -1,10 +1,10 @@
 import re
 
+
 class Instruction:
     FIRST_LINE_PATTERN = re.compile(r'^([0-9a-f]+) <(.+)>\:')
     #                                     |offset        |   |hex inst |      |optr       |      |opd|
     INSTRUCTION_LINE_PATTERN = re.compile(r'\s*([a-f0-9]+)\:\s+[a-f0-9]{8}\s+(?:([a-z0-9]+)(?:\s+(.+))?)')
-    OPERANDS_PATTERN = re.compile(r'[, ]')
 
     OP_TYPES = {
         'ARITHMETIC': ['add', 'addu', 'addi', 'addiu', 'div', 'divu', 'mult', 'multu', 'sub', 'subu'],
@@ -25,14 +25,20 @@ class Instruction:
     OPERATOR_TO_TYPE = {}
 
     @staticmethod
-    def buildOperatorToTypeMap():
+    def buildOperatorToTypeDict():
+        """Builds a static dict mapping operator names to their types for easy lookup"""
         for operatorType in Instruction.OP_TYPES:
             for operator in Instruction.OP_TYPES[operatorType]:
                 Instruction.OPERATOR_TO_TYPE[operator] = operatorType
 
     def __init__(self, line):
+        """Initializes a new Instuction object
+
+        line -- string consisting of a line from a function in objdump output that contains its offset, operator, and operands
+        """
         offset, operator, operands = Instruction.INSTRUCTION_LINE_PATTERN.findall(line)[0]
         self.offset = offset
+        self.operands = operands.split(',')
         self.operator = operator
         try:
             self.operatorType = Instruction.OPERATOR_TO_TYPE[self.operator]
@@ -42,9 +48,8 @@ class Instruction:
                 Instruction.NOT_FOUND.append(self.operator)
                 if not self.operator.startswith('0x'):
                     print "Unknown operator: %s at %s. Please submit a bug report." % (self.operator, self.offset)
-        self.operands = Instruction.OPERANDS_PATTERN.split(operands)
 
     def __repr__(self):
         return "%s: %s %s" % (self.offset, self.operator, ",".join(self.operands))
 
-Instruction.buildOperatorToTypeMap() # todo: find out how to run this statically
+Instruction.buildOperatorToTypeDict() #TODO: find out how to run this statically
