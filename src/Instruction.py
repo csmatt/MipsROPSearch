@@ -2,9 +2,8 @@ import re
 
 
 class Instruction:
-    FIRST_LINE_PATTERN = re.compile(r'^([0-9a-f]+) <(.+)>\:')
-    #                                     |offset        |   |hex inst |      |optr       |      |opd|
-    INSTRUCTION_LINE_PATTERN = re.compile(r'\s*([a-f0-9]+)\:\s+[a-f0-9]{8}\s+(?:([a-z0-9]+)(?:\s+(.+))?)')
+    #                                     |offset        |   |hex inst |      |optr       |      |opds|
+    INSTRUCTION_LINE_PATTERN = re.compile(r'\s*([a-f0-9]+):\s+[a-f0-9]{8}\s+(?:([a-z0-9]+)(?:\s+(.+))?)')
 
     OP_TYPES = {
         'ARITHMETIC': ['add', 'addu', 'addi', 'addiu', 'div', 'divu', 'mult', 'multu', 'sub', 'subu'],
@@ -25,14 +24,14 @@ class Instruction:
     OPERATOR_TO_TYPE = {}
 
     @staticmethod
-    def buildOperatorToTypeDict():
+    def _BuildOperatorToTypeDict():
         """Builds a static dict mapping operator names to their types for easy lookup"""
         for operatorType in Instruction.OP_TYPES:
             for operator in Instruction.OP_TYPES[operatorType]:
                 Instruction.OPERATOR_TO_TYPE[operator] = operatorType
 
     def __init__(self, line):
-        """Initializes a new Instuction object
+        """Initializes a new Instruction object
 
         line -- string consisting of a line from a function in objdump output that contains its offset, operator, and operands
         """
@@ -42,7 +41,7 @@ class Instruction:
         self.operator = operator
         try:
             self.operatorType = Instruction.OPERATOR_TO_TYPE[self.operator]
-        except(KeyError):
+        except KeyError:
             self.operatorType = "NOT_FOUND"
             if self.operator not in Instruction.NOT_FOUND:
                 Instruction.NOT_FOUND.append(self.operator)
@@ -52,4 +51,4 @@ class Instruction:
     def __repr__(self):
         return "%s: %s %s" % (self.offset, self.operator, ",".join(self.operands))
 
-Instruction.buildOperatorToTypeDict() #TODO: find out how to run this statically
+Instruction._BuildOperatorToTypeDict()

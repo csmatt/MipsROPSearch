@@ -2,7 +2,9 @@ import re
 import Utils
 from Instruction import Instruction
 
+
 class ObjdumpFunction:
+    FIRST_LINE_PATTERN = re.compile(r'^([0-9a-f]+) <(.+)>:')
     # looks for operator and operands expression in string from command line arg
     INSTRUCTION_EXPRESSION_PATTERN = re.compile(r'(?P<operator>[a-z]+)\s(?P<operandExpression>[a-z0-9\*]{2}).*')
 
@@ -11,7 +13,7 @@ class ObjdumpFunction:
 
         firstLine -- string from the first line of a function from objdump output that contains its name and start offset
         """
-        self.start, self.name = Instruction.FIRST_LINE_PATTERN.findall(firstLine)[0]
+        self.start, self.name = ObjdumpFunction.FIRST_LINE_PATTERN.findall(firstLine)[0]
         self.instructions = []
         self.jumpBlocks = []
 
@@ -34,7 +36,7 @@ class ObjdumpFunction:
         while i < len(self.instructions)-1:
             inst = self.instructions[i]
             block.append(inst)
-            if inst.operatorType in ["JUMP","BRANCH"]:
+            if inst.operatorType in ["JUMP", "BRANCH"]:
                 # also grab the instruction after the jump or branch and increment the counter
                 block.append(self.instructions[i+1])
                 i += 1
@@ -45,7 +47,7 @@ class ObjdumpFunction:
                 block = []
             i += 1
 
-    def checkChanged(self, instList, regList):
+    def _checkChanged(self, instList, regList):
         """Returns True if an instruction in instList changes the value of any registers in regList
 
         instList -- list of Instruction objects
@@ -56,7 +58,7 @@ class ObjdumpFunction:
                 return True
         return False
 
-    def checkOtherOperandsMatch(self, instructionOperands, desiredOperands):
+    def _checkOtherOperandsMatch(self, instructionOperands, desiredOperands):
         """Returns True if instructionOperands[1:] match all operands specified in desiredOperands[1:] in order
 
         For a match, strings in desiredOperands do not have to match exactly, they only have to be a substring
@@ -76,7 +78,7 @@ class ObjdumpFunction:
                 return False
         return True
 
-    def searchForRegisterChangeInJumpBlock(self, block, operator, desiredRegister, regLastChange):
+    def _searchForRegisterChangeInJumpBlock(self, block, operator, desiredRegister, regLastChange):
         """Adds jump block to ropGadgets if criteria is met
 
         Criteria: operator and desiredRegister match an instruction,
@@ -128,7 +130,7 @@ class ObjdumpFunction:
             regLastChange = {}
             # go through the instructions in reverse order to find the last time a particular register is changed in a jump block
             # put that register in regLastChange and map it to the index of the instruction where it's last changed
-            for instIndex in xrange(len(block)-1, 0, -1):
+            for instIndex in xrange(len(block)-1, -1, -1):
                 if block[instIndex].operatorType in Instruction.CHANGE_OPS:
                     if block[instIndex].operands[0] not in regLastChange:
                         regLastChange[block[instIndex].operands[0]] = instIndex
@@ -138,10 +140,14 @@ class ObjdumpFunction:
                     # if the destination register we're looking for isn't in this jump block, this block is useless, so continue
 
                     if desiredRegister in regLastChange and block[regLastChange[desiredRegister]].operator == desiredOperator:
-                        potentialRopBlock = self.searchForRegisterChangeInJumpBlock(block, desiredOperator, desiredRegister, regLastChange)
-                        if self.checkOtherOperandsMatch(potentialRopBlock[0].operands, desiredOperands) and not self.checkChanged(potentialRopBlock, disallowedRegisters):
-                            # all operands matche and no disallowed registers changed values, add this gadget
-                            ropGadgets.append(potentialRopBlock)
+                        potentialRopBlock = self._searchForRegisterChangeInJumpBlock(block, desiredOperator, desiredRegister, regLastChange)
+                        # if potentialRopBlock starts with a jump instruction, the instruction we want to check for matching operands of is the one at index 1
+                        desiredInstructionIndex = 1 if potentialRopBlock[0].operator in Instruction.OP_TYPES["JUMP"] else 0
+                        if self._checkOtherOperandsMatch(potentialRopBlock[desiredInstructionIndex].operands, desiredOperands):
+                            # all operands match
+                            if not self._checkChanged(potentialRopBlock, disallowedRegisters):
+                                # no disallowed registers changed values, add this gadget
+                                ropGadgets.append(potentialRopBlock)
                 else:
                     ropGadgetStart = 0
                     for reg in regLastChange:
@@ -157,10 +163,10 @@ class ObjdumpFunction:
                     # starting from an instruction containing a matching operator and operand
                     for instIndex in xrange(ropGadgetStart, len(block)):
                         if desiredOperator == block[instIndex].operator and desiredRegister == block[instIndex].operands[0]:
-                            if self.checkOtherOperandsMatch(block[instIndex].operands, desiredOperands):
+                            if self._checkOtherOperandsMatch(block[instIndex].operands, desiredOperands):
                                 # if we're on the last instruction, we need to start the block from 1 prior to include the jump
                                 blockStartIndex = instIndex - 1 if instIndex == len(block) - 1 else instIndex
                                 ropGadgets.append(block[blockStartIndex:])
                                 break
 
-        Utils.printList(ropGadgets)
+        return ropGadgets

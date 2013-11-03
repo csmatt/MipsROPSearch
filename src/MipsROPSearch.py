@@ -18,7 +18,7 @@ def extractFunctionsFromObjdumpLines(objdumpLines):
     functions = []
     function = None
     for line in objdumpLines[startOfTextSection:]:
-        if Instruction.FIRST_LINE_PATTERN.match(line):
+        if ObjdumpFunction.FIRST_LINE_PATTERN.match(line):
             function = ObjdumpFunction(line)
         elif Instruction.INSTRUCTION_LINE_PATTERN.match(line):
             function.addInstruction(line)
@@ -65,7 +65,8 @@ def main():
 
     for function in functions:
         function.extractJumpBlocks()
-        function.search(sys.argv[2], disallowedRegisters, jumpRegister)
+        ropGadgets = function.search(sys.argv[2], disallowedRegisters, jumpRegister)
+        Utils.printList(ropGadgets)
 
 if __name__ == '__main__':
     main()
