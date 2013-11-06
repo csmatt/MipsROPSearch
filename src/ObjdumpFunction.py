@@ -98,6 +98,13 @@ class ObjdumpFunction:
             # cool, the register we wanted changed was changed and by the operator we wanted, return the block starting from there
             return block[ropGadgetStart:]
 
+    def _checkMoveToJumpRegister(self, block, index, regLastChange, jumpRegister, disallowedRegisters):
+        lastChangeOfJumpRegister = regLastChange.get(jumpRegister)
+        if lastChangeOfJumpRegister is not None and block[lastChangeOfJumpRegister].operator == "move" and index > lastChangeOfJumpRegister:
+            block[lastChangeOfJumpRegister].offset = "blaah"
+            return lastChangeOfJumpRegister
+        return index
+
     def search(self, patternStr, disallowedRegisters=None, jumpRegister=None):
         """Searches for and returns portions of jump blocks that match criteria
 
@@ -145,7 +152,11 @@ class ObjdumpFunction:
                         desiredInstructionIndex = 1 if potentialRopBlock[0].operator in Instruction.OP_TYPES["JUMP"] else 0
                         if self._checkOtherOperandsMatch(potentialRopBlock[desiredInstructionIndex].operands, desiredOperands):
                             # all operands match
-                            if not self._checkChanged(potentialRopBlock, disallowedRegisters):
+                            newStart = self._checkMoveToJumpRegister(block,len(block)-len(potentialRopBlock), regLastChange, jumpRegister, disallowedRegisters)
+                            newPotentialRopBlock = block[newStart:]
+                            if not self._checkChanged(newPotentialRopBlock, disallowedRegisters):
+                                ropGadgets.append(newPotentialRopBlock)
+                            elif not self._checkChanged(potentialRopBlock, disallowedRegisters):
                                 # no disallowed registers changed values, add this gadget
                                 ropGadgets.append(potentialRopBlock)
                 else:
