@@ -101,7 +101,6 @@ class ObjdumpFunction:
     def _checkMoveToJumpRegister(self, block, index, regLastChange, jumpRegister, disallowedRegisters):
         lastChangeOfJumpRegister = regLastChange.get(jumpRegister)
         if lastChangeOfJumpRegister is not None and block[lastChangeOfJumpRegister].operator == "move" and index > lastChangeOfJumpRegister:
-            block[lastChangeOfJumpRegister].offset = "blaah"
             return lastChangeOfJumpRegister
         return index
 
