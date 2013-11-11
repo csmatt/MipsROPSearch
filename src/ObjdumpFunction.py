@@ -98,9 +98,22 @@ class ObjdumpFunction:
             # cool, the register we wanted changed was changed and by the operator we wanted, return the block starting from there
             return block[ropGadgetStart:]
 
-    def _checkMoveToJumpRegister(self, block, index, regLastChange, jumpRegister, disallowedRegisters):
-        lastChangeOfJumpRegister = regLastChange.get(jumpRegister)
-        if lastChangeOfJumpRegister is not None and block[lastChangeOfJumpRegister].operator == "move" and index > lastChangeOfJumpRegister:
+    def _includeMoveToJumpRegister(self, block, index, regLastChange):
+        """Looks prior to index in block for a move instruction copying a register's value into the jumpRegister
+
+        If a move instruction exists prior to index and no disallowedRegisters are changed after the move, the move
+        instruction's index is returned. Otherwise, index is returned.
+
+        block -- a jump block
+        index -- the index to return if a qualifying move instruction is not found
+        regLastChange -- a map of register names to the index in block closest to the jump at which they were changed
+        """
+        lastChangeOfJumpRegister = regLastChange.get(block[-2].operands[0])
+        if (
+            lastChangeOfJumpRegister is not None and
+            block[lastChangeOfJumpRegister].operator == "move" and
+            index > lastChangeOfJumpRegister
+        ):
             return lastChangeOfJumpRegister
         return index
 
@@ -123,18 +136,21 @@ class ObjdumpFunction:
         ropGadgets = []
 
         if desiredFirstOperandExpression[1] == "*":
-            # handle wildcard destination register ("**" for all a,s,and t registers or the register group and a "*"- ex: "s*")
-            desiredFirstOperandRegisters = Utils.buildRegisterListFromPattern("a*,s*,t*,ra" if desiredOperands[0][0] == "*" else desiredOperands[0])
+            # handle wildcard destination register
+            # "**" for all a,s,and t registers or the register group and a "*"- ex: "s*"
+            patternArgument = "a*,s*,t*,ra" if desiredOperands[0][0] == "*" else desiredOperands[0]
+            desiredFirstOperandRegisters = Utils.buildRegisterListFromPattern(patternArgument)
         else:
             desiredFirstOperandRegisters = [desiredOperands[0]]
 
         for block in self.jumpBlocks:
-            # if jumpRegister is specified, make sure this block jumps to that register. if it doesn't, move on to the next block
+            # if jumpRegister is specified, make sure this block jumps to that register.
+            # if it doesn't, move on to the next block
             if jumpRegister and block[-2].operands[0] != jumpRegister:
                 continue
 
             regLastChange = {}
-            # go through the instructions in reverse order to find the last time a particular register is changed in a jump block
+            # go through the instructions in reverse order to find the last time a register is changed in a jump block
             # put that register in regLastChange and map it to the index of the instruction where it's last changed
             for instIndex in xrange(len(block)-1, -1, -1):
                 if block[instIndex].operatorType in Instruction.CHANGE_OPS:
@@ -151,10 +167,15 @@ class ObjdumpFunction:
                         desiredInstructionIndex = 1 if potentialRopBlock[0].operator in Instruction.OP_TYPES["JUMP"] else 0
                         if self._checkOtherOperandsMatch(potentialRopBlock[desiredInstructionIndex].operands, desiredOperands):
                             # all operands match
-                            newStart = self._checkMoveToJumpRegister(block,len(block)-len(potentialRopBlock), regLastChange, jumpRegister, disallowedRegisters)
-                            newPotentialRopBlock = block[newStart:]
-                            if not self._checkChanged(newPotentialRopBlock, disallowedRegisters):
+
+                            # try to include moves into the jump register if possible
+                            startIndex = len(block)-len(potentialRopBlock)
+                            newStartIndex = self._includeMoveToJumpRegister(block, startIndex, regLastChange)
+                            newPotentialRopBlock = block[newStartIndex:]
+                            if newStartIndex != startIndex and not self._checkChanged(newPotentialRopBlock, disallowedRegisters):
                                 ropGadgets.append(newPotentialRopBlock)
+                            # there were no qualifying moves into the jump register prior to the matching instruction
+                            # make sure the block starting with the matching instruction doesn't change disallowed registers
                             elif not self._checkChanged(potentialRopBlock, disallowedRegisters):
                                 # no disallowed registers changed values, add this gadget
                                 ropGadgets.append(potentialRopBlock)
