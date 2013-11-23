@@ -1,5 +1,5 @@
 import unittest
-from src.ObjdumpFunction import ObjdumpFunction
+from src.ObjdumpHandler import ObjdumpFunction
 
 
 class ObjdumpFunctionTests(unittest.TestCase):

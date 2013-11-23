@@ -1,53 +1,13 @@
-import re
-import Utils
 from Instruction import Instruction
+import Utils
 
 
-class ObjdumpFunction:
-    FIRST_LINE_PATTERN = re.compile(r'^([0-9a-f]+) <(.+)>:')
-    # looks for operator and operands expression in string from command line arg
-    INSTRUCTION_EXPRESSION_PATTERN = re.compile(r'(?P<operator>[a-z]+)\s(?P<operandExpression>[a-z0-9\*]{2}).*')
+class InstructionSequence(object):
+    def __init__(self, instructions=None):
+        self.instructions = instructions if instructions else []
 
-    def __init__(self, first_line):
-        """Initializes a new ObjdumpFunction object
-
-        first_line -- string from the first line of a function from objdump output that contains its name and start offset
-        """
-        self.start, self.name = ObjdumpFunction.FIRST_LINE_PATTERN.findall(first_line)[0]
-        self.instructions = []
-        self.jump_blocks = []
-
-    def add_instruction(self, line):
-        """Adds an instruction object (initialized from line) to self.instructions
-
-        line -- string from objdump output with which to instantiate a new instruction object
-        """
-        self.instructions.append(Instruction(line))
-
-    # todo: this can probably be done while we're adding lines
-    def extract_jump_blocks(self):
-        """Extracts suitable subsets from self.instructions and stores them in self.jump_blocks
-
-         Suitable instruction subsets end in a jump instruction (plus branch delay slot instruction)
-         and do not contain branch instructions.
-         """
-        i = 0
-        block = []
-        while i < len(self.instructions)-1:
-            inst = self.instructions[i]
-            block.append(inst)
-            if inst.operator_type in ["JUMP", "BRANCH"]:
-                # also grab the instruction after the jump or branch and increment the counter
-                block.append(self.instructions[i+1])
-                i += 1
-                if inst.operator_type == "JUMP":
-                    # only add jump blocks since branches would add complexity
-                    # todo: make exclusion of branches configurable?
-                    self.jump_blocks.append(block)
-                block = []
-            i += 1
-
-    def _check_changed(self, inst_list, reg_list):
+    @staticmethod
+    def _check_changed(inst_list, reg_list):
         """Returns true if an instruction in inst_list changes the value of any registers in reg_list
 
         inst_list -- list of instruction objects
@@ -58,7 +18,8 @@ class ObjdumpFunction:
                 return True
         return False
 
-    def _check_other_operands_match(self, instruction_operands, desired_operands):
+    @staticmethod
+    def _check_other_operands_match(instruction_operands, desired_operands):
         """Returns true if instruction_operands[1:] match all operands specified in desired_operands[1:] in order
 
         For a match, strings in desired_operands do not have to match exactly, they only have to be a substring
@@ -78,7 +39,8 @@ class ObjdumpFunction:
                 return False
         return True
 
-    def _search_for_register_change_in_jump_block(self, block, operator, desired_register, reg_last_change):
+    @staticmethod
+    def _search_for_register_change_in_jump_block(block, operator, desired_register, reg_last_change):
         """Adds jump block to rop_gadgets if criteria is met
 
         Criteria: operator and desired_register match an instruction,
@@ -98,7 +60,8 @@ class ObjdumpFunction:
             # cool, the register we wanted changed was changed and by the operator we wanted, return the block starting from there
             return block[rop_gadget_start:]
 
-    def _include_move_to_jump_register(self, block, index, reg_last_change):
+    @staticmethod
+    def _include_move_to_jump_register(block, index, reg_last_change):
         """Looks prior to index in block for a move instruction copying a register's value into the jump_register
 
         If a move instruction exists prior to index and no disallowed_registers are changed after the move, the move
