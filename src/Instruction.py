@@ -24,11 +24,11 @@ class Instruction:
     OPERATOR_TO_TYPE = {}
 
     @staticmethod
-    def _BuildOperatorToTypeDict():
+    def _build_operator_to_type_dict():
         """Builds a static dict mapping operator names to their types for easy lookup"""
-        for operatorType in Instruction.OP_TYPES:
-            for operator in Instruction.OP_TYPES[operatorType]:
-                Instruction.OPERATOR_TO_TYPE[operator] = operatorType
+        for operator_type in Instruction.OP_TYPES:
+            for operator in Instruction.OP_TYPES[operator_type]:
+                Instruction.OPERATOR_TO_TYPE[operator] = operator_type
 
     def __init__(self, line):
         """Initializes a new Instruction object
@@ -40,9 +40,9 @@ class Instruction:
         self.operands = operands.split(',')
         self.operator = operator
         try:
-            self.operatorType = Instruction.OPERATOR_TO_TYPE[self.operator]
+            self.operator_type = Instruction.OPERATOR_TO_TYPE[self.operator]
         except KeyError:
-            self.operatorType = "NOT_FOUND"
+            self.operator_type = "NOT_FOUND"
             if self.operator not in Instruction.NOT_FOUND:
                 Instruction.NOT_FOUND.append(self.operator)
                 if not self.operator.startswith('0x'):
@@ -51,4 +51,4 @@ class Instruction:
     def __repr__(self):
         return "%s: %s %s" % (self.offset, self.operator, ",".join(self.operands))
 
-Instruction._BuildOperatorToTypeDict()
+Instruction._build_operator_to_type_dict()
