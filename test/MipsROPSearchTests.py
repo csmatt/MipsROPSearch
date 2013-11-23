@@ -136,3 +136,17 @@ class ObjdumpFunctionTests(unittest.TestCase):
         gadget = fxn.search("lw s1", ["s2"], "t9")
         self.assertEqual(gadget[0][0].operator, "lw")
         self.assertEqual(gadget[0][0].operands[0], "s1")
+
+    def test_match_includes_move_when_jump_register_disallowed(self):
+        fxn = self.create_objdump_function_from_string_list([
+            "sw ra,28(sp)",
+            "move t9,s0",
+            "lw s2,36(sp)",
+            "lw s1,32(sp)",
+            "jalr t9",
+            "move at,at"
+        ])
+        fxn.extract_jump_blocks()
+        gadget = fxn.search("lw s1", ["t9"], "t9")
+        self.assertEqual(gadget[0][0].operator, "move")
+        self.assertEqual(gadget[0][0].operands[0], "t9")

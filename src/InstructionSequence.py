@@ -7,15 +7,17 @@ class InstructionSequence(object):
         self.instructions = instructions if instructions else []
 
     @staticmethod
-    def _check_changed(inst_list, reg_list):
+    def _check_changed(inst_list, reg_list, jump_register=None):
         """Returns true if an instruction in inst_list changes the value of any registers in reg_list
 
         inst_list -- list of instruction objects
         reg_list -- list of register name strings
+        jump_register -- if present, a 'move jump_register' operation will not be counted as a change
         """
         for inst in inst_list:
             if inst.operator_type in Instruction.CHANGE_OPS and inst.operands[0] in reg_list:
-                return True
+                if not (jump_register and inst.operator == "move" and inst.operands[0] == jump_register):
+                    return True
         return False
 
     @staticmethod
@@ -136,7 +138,7 @@ class InstructionSequence(object):
                             start_index = len(block)-len(potential_rop_block)
                             new_start_index = self._include_move_to_jump_register(block, start_index, reg_last_change)
                             new_potential_rop_block = block[new_start_index:]
-                            if new_start_index != start_index and not self._check_changed(new_potential_rop_block, disallowed_registers):
+                            if new_start_index != start_index and not self._check_changed(new_potential_rop_block, disallowed_registers, jump_register):
                                 rop_gadgets.append(new_potential_rop_block)
                             # there were no qualifying moves into the jump register prior to the matching instruction
                             # make sure the block starting with the matching instruction doesn't change disallowed registers
