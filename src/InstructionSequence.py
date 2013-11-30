@@ -2,168 +2,168 @@ from Instruction import Instruction
 import Utils
 
 
-class InstructionSequence(object):
-    def __init__(self, instructions=None):
-        self.instructions = instructions if instructions else []
+class InstructionSequence(list):
+    """
+    Subclass of list specifically to store Instruction objects in order.
+    """
+    def __init__(self, instructions):
+        """
+        instructions -- list of Instruction objects ending with a jump and branch delay slot
+        """
+        list.__init__(self, instructions)
+
+        # dict mapping register names to the index in self where that register's value was updated (closest to the jump)
+        self.register_changes = {}
+        # the register this sequence will eventually jump to
+        self.jump_register = self[-2].operands[0]
+
+        self._store_register_changes()
+
+    def _store_register_changes(self):
+        # go through the instructions in reverse order to find the last time a register is changed in self
+        # put that register in self.register_changes and map it to the index of the instruction where it's last changed
+        for inst_index in xrange(len(self)-1, -1, -1):
+            if self[inst_index].operator_type in Instruction.CHANGE_OP_TYPES:
+                if self[inst_index].operands[0] not in self.register_changes:
+                    self.register_changes[self[inst_index].operands[0]] = inst_index
 
     @staticmethod
-    def _check_changed(inst_list, reg_list, jump_register=None):
-        """Returns true if an instruction in inst_list changes the value of any registers in reg_list
+    def _makes_changes(instructions, reg_list):
+        """Returns True if an instruction in instructions changes the value of any registers in reg_list
 
-        inst_list -- list of instruction objects
+        instructions -- list of Instruction objects
         reg_list -- list of register name strings
-        jump_register -- if present, a 'move jump_register' operation will not be counted as a change
         """
-        for inst in inst_list:
-            if inst.operator_type in Instruction.CHANGE_OPS and inst.operands[0] in reg_list:
-                if not (jump_register and inst.operator == "move" and inst.operands[0] == jump_register):
-                    return True
+        for inst in instructions:
+            if inst.operator_type in Instruction.CHANGE_OP_TYPES and inst.operands[0] in reg_list:
+                return True
         return False
 
     @staticmethod
-    def _check_other_operands_match(instruction_operands, desired_operands):
-        """Returns true if instruction_operands[1:] match all operands specified in desired_operands[1:] in order
+    def _is_copy_to_jump_register(instruction, jump_register):
+        """Returns True if instruction is copying a value into jump_register in a way that allows for controlling jumps
+           and False otherwise.
 
-        For a match, strings in desired_operands do not have to match exactly, they only have to be a substring
+        Ex: move t9,s0
+        Ex: lw ra,172(sp)
 
-        instruction_operands -- an instruction object's .operands
-        desired_operands -- list of strings to match in order against instruction_operands
+        instruction -- an Instruction object
+        jump_register -- the name of the register jumped to in the InstructionSequence containing instruction
         """
-        instruction_operands_length = len(instruction_operands)
-        desired_operands_length = len(desired_operands)
+        if instruction.operator == 'move' and instruction.operands[0] == jump_register:
+            return True
+        if instruction.operator == 'lw' and instruction.operands[0] == jump_register and 'sp' in instruction.operands[1]:
+            return True
+        return False
 
-        if desired_operands_length > instruction_operands_length:
-            # there's no way there's a match if the instruction doesn't have enough operands, return False
-            return False
+    def _include_copy_to_jump_register(self, potential_gadget, disallowed_registers):
+        """Tries to include a instruction that controls where this sequence will jump to, if possible.
 
-        for operand_index in xrange(1, desired_operands_length):
-            if not desired_operands[operand_index] in instruction_operands[operand_index]:
-                return False
-        return True
+        If an instruction controlling the jump exists and including it along with the instructions between it and
+        potential_gadget does not change any disallowed registers, that list of instructions is returned.
+        Or, if none of the disallowed registers were changed, the original list of instructions is returned.
+        If disallowed registers were changed, None is returned.
 
-    @staticmethod
-    def _search_for_register_change_in_jump_block(block, operator, desired_register, reg_last_change):
-        """Adds jump block to rop_gadgets if criteria is met
-
-        Criteria: operator and desired_register match an instruction,
-                  no register in disallowed_registers has its value changed after matching instruction
-
-        block -- jump block (list of instruction objects)
-        operator -- string that a qualifying instruction's operator will match
-        desired_register -- string that a qualifying instruction's destination register operand will match
-        reg_last_change -- dict mapping register names to the index in block where that register's value was updated (closest to the jump)
+        potential_gadget -- list of Instructions
+        disallowed_registers -- list of registers that must not be changed in the list of Instructions returned
         """
-        # There's a chance that the last time our register is changed is the instruction after the jump.
-        # If that's the case, we also need to include the jump in the rop_block,
-        # so set start_from to the jump instruction, otherwise, start from where the register is last changed
-        rop_gadget_start = len(block)-2 if reg_last_change[desired_register] == len(block)-1 else reg_last_change[desired_register]
+        start_index = len(self)-len(potential_gadget)
+        new_start_index = self._include_copy_to_jump_register_helper(start_index)
+        new_potential_gadget = self[new_start_index:]
+        if (
+            new_start_index != start_index and
+            not InstructionSequence._makes_changes(new_potential_gadget, disallowed_registers)
+        ):
+            return new_potential_gadget
+        # there were no qualifying moves into the jump register prior to the matching instruction
+        # make sure the gadget starting with the matching instruction doesn't change disallowed registers
+        elif not self._makes_changes(potential_gadget, disallowed_registers):
+            # no disallowed registers changed values, add this gadget
+            return potential_gadget
 
-        if block[reg_last_change[desired_register]].operator == operator:
-            # cool, the register we wanted changed was changed and by the operator we wanted, return the block starting from there
-            return block[rop_gadget_start:]
+    def _include_copy_to_jump_register_helper(self, index):
+        """Attempts to find and return the index of a controllable jump instruction
 
-    @staticmethod
-    def _include_move_to_jump_register(block, index, reg_last_change):
-        """Looks prior to index in block for a move instruction copying a register's value into the jump_register
-
-        If a move instruction exists prior to index and no disallowed_registers are changed after the move, the move
-        instruction's index is returned. otherwise, index is returned.
-
-        block -- a jump block
         index -- the index to return if a qualifying move instruction is not found
-        reg_last_change -- a map of register names to the index in block closest to the jump at which they were changed
         """
-        last_change_of_jump_register = reg_last_change.get(block[-2].operands[0])
+        last_change_of_jump_register = self.register_changes.get(self.jump_register)
         if (
             last_change_of_jump_register is not None and
-            block[last_change_of_jump_register].operator == "move" and
+            InstructionSequence._is_copy_to_jump_register(self[last_change_of_jump_register], self.jump_register) and
             index > last_change_of_jump_register
         ):
             return last_change_of_jump_register
         return index
 
-    def search(self, pattern_str, disallowed_registers=None, jump_register=None):
-        """Searches for and returns portions of jump blocks that match criteria
+    @staticmethod
+    def extract_search_criteria(search_str):
+        """Extracts the desired operator and operands, expanding a pattern for the first operand
+           into a list of registers for the first operand.
 
-        Criteria: match instruction pattern in pattern_str,
-                  none of disallowed_registers changed after instruction,
-                  jump instruction must jump to jump_register (if not none)
+        Returns a tuple of:
+            operator, list of register names from expanding first operand pattern, list of original search operands
 
-        pattern_str -- user input string containing the operator and an expression to match the first operand against
-        disallowed_registers -- optional list of registers that must not be changed in instructions after a pattern_str match
-        jump_register -- optional string name of the register the jump instruction must jump to
+        search_str -- a string of the format: OPERATOR OPERAND1_PATTERN,OPERAND2
         """
-        if not disallowed_registers: disallowed_registers = []
-
-        desired_operator, desired_operands_str = pattern_str.split()
+        desired_operator, desired_operands_str = search_str.split()
         desired_operands = desired_operands_str.split(',')
         desired_first_operand_expression = desired_operands[0]
-        rop_gadgets = []
 
         if desired_first_operand_expression[1] == "*":
             # handle wildcard destination register
-            # "**" for all a,s,and t registers or the register group and a "*"- ex: "s*"
+            # "**" for ra and all a,s,and t registers or the register group and a "*"- ex: "s*"
             pattern_argument = "a*,s*,t*,ra" if desired_operands[0][0] == "*" else desired_operands[0]
             desired_first_operand_registers = Utils.build_register_list_from_pattern(pattern_argument)
         else:
             desired_first_operand_registers = [desired_operands[0]]
 
-        for block in self.jump_blocks:
-            # if jump_register is specified, make sure this block jumps to that register.
-            # if it doesn't, move on to the next block
-            if jump_register and block[-2].operands[0] != jump_register:
-                continue
+        return desired_operator, desired_first_operand_registers, desired_operands
 
-            reg_last_change = {}
-            # go through the instructions in reverse order to find the last time a register is changed in a jump block
-            # put that register in reg_last_change and map it to the index of the instruction where it's last changed
-            for inst_index in xrange(len(block)-1, -1, -1):
-                if block[inst_index].operator_type in Instruction.CHANGE_OPS:
-                    if block[inst_index].operands[0] not in reg_last_change:
-                        reg_last_change[block[inst_index].operands[0]] = inst_index
+    def search(self, pattern, disallowed_registers=None, desired_jump_register=None):
+        """Searches for and returns portions of this InstructionSequence that match criteria
 
-            for desired_register in desired_first_operand_registers:
-                if Instruction.OPERATOR_TO_TYPE.get(desired_operator) in Instruction.CHANGE_OPS:
-                    # if the destination register we're looking for isn't in this jump block, this block is useless, so continue
+        Criteria: matches pattern,
+                  none of registers in disallowed_registers changed after matching instruction,
+                  instruction destination register not changed after instruction,
+                  jump instruction must jump to desired_jump_register (if specified)
 
-                    if desired_register in reg_last_change and block[reg_last_change[desired_register]].operator == desired_operator:
-                        potential_rop_block = self._search_for_register_change_in_jump_block(block, desired_operator, desired_register, reg_last_change)
-                        # if potential_rop_block starts with a jump instruction,
-                        # the instruction we want to check for matching operands of is the one at index 1
-                        desired_instruction_index = 1 if potential_rop_block[0].operator in Instruction.OP_TYPES["JUMP"] else 0
-                        if self._check_other_operands_match(potential_rop_block[desired_instruction_index].operands, desired_operands):
-                            # all operands match
+        pattern -- tuple containing the desired operator, a list of expanded first operands from the pattern, and a list of all operands
+                   or a string to extract the tuple from
 
-                            # try to include moves into the jump register if possible
-                            start_index = len(block)-len(potential_rop_block)
-                            new_start_index = self._include_move_to_jump_register(block, start_index, reg_last_change)
-                            new_potential_rop_block = block[new_start_index:]
-                            if new_start_index != start_index and not self._check_changed(new_potential_rop_block, disallowed_registers, jump_register):
-                                rop_gadgets.append(new_potential_rop_block)
-                            # there were no qualifying moves into the jump register prior to the matching instruction
-                            # make sure the block starting with the matching instruction doesn't change disallowed registers
-                            elif not self._check_changed(potential_rop_block, disallowed_registers):
-                                # no disallowed registers changed values, add this gadget
-                                rop_gadgets.append(potential_rop_block)
-                else:
-                    rop_gadget_start = 0
-                    for reg in reg_last_change:
-                        if reg in disallowed_registers:
-                            if reg_last_change.get(reg) > rop_gadget_start:
-                                rop_gadget_start = reg_last_change.get(reg)
+        disallowed_registers -- optional list of registers that must not be changed in instructions after a match
+        desired_jump_register -- optional string name of the register the jump instruction must jump to
+        """
+        if type(pattern) == str:
+            pattern = InstructionSequence.extract_search_criteria(pattern)
+        desired_operator, desired_first_operand_registers, desired_operands = pattern
 
-                    if rop_gadget_start > 0:
-                        # add 1 to start at the instruction after the disallowed register's value change occurred
-                        rop_gadget_start += 1
+        rop_gadget = None
 
-                    # loop through the instructions and add instructions from block
-                    # starting from an instruction containing a matching operator and operand
-                    for inst_index in xrange(rop_gadget_start, len(block)):
-                        if desired_operator == block[inst_index].operator and desired_register == block[inst_index].operands[0]:
-                            if self._check_other_operands_match(block[inst_index].operands, desired_operands):
-                                # if we're on the last instruction, we need to start the block from 1 prior to include the jump
-                                block_start_index = inst_index - 1 if inst_index == len(block) - 1 else inst_index
-                                rop_gadgets.append(block[block_start_index:])
-                                break
+        if disallowed_registers is None:
+            disallowed_registers = []
 
-        return rop_gadgets
+        # if jump_register is specified, make sure self jumps to that register.
+        # if it doesn't, return None
+        if desired_jump_register and self.jump_register != desired_jump_register:
+            return None
+
+        # iterate over the instructions in order and return the first one that matches the criteria
+        for inst_index in xrange(len(self)):
+            instruction = self[inst_index]
+            if (
+                instruction.operator == desired_operator and
+                instruction.operands[0] in desired_first_operand_registers and
+                instruction.check_other_operands_match(desired_operands) and
+                self.register_changes.get(instruction.operands[0], -1) <= inst_index
+            ):
+                potential_gadget = self._include_copy_to_jump_register(self[inst_index:], disallowed_registers)
+                if potential_gadget:
+                    rop_gadget = potential_gadget
+                    # since instructions were processed in order, the first matching gadget contains all sub gadgets,
+                    # so we're done
+                    break
+
+        if rop_gadget and len(rop_gadget) == 1:
+            # the matching instruction was the branch delay slot, so include the jump as well
+            rop_gadget = self[-2:]
+        return rop_gadget

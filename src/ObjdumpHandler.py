@@ -20,7 +20,7 @@ def extract_functions_from_objdump_lines(objdump_lines):
         elif Instruction.INSTRUCTION_LINE_PATTERN.match(line):
             function.add_instruction(line)
         elif line == "\n":
-            # no long in a function block
+            # no longer in a function block
             if function:
                 # if we were in the process of building a function, add it to the list and reset it
                 function.extract_jump_blocks()
@@ -32,7 +32,10 @@ def extract_functions_from_objdump_lines(objdump_lines):
     return functions
 
 
-class ObjdumpFunction(InstructionSequence):
+class ObjdumpFunction:
+    """
+    Provides a storage structure for functions extracted from objdump's output
+    """
     FIRST_LINE_PATTERN = re.compile(r'^([0-9a-f]+) <(.+)>:')
     # looks for operator and operands expression in string from command line arg
     INSTRUCTION_EXPRESSION_PATTERN = re.compile(r'(?P<operator>[a-z]+)\s(?P<operandExpression>[a-z0-9\*]{2}).*')
@@ -42,9 +45,9 @@ class ObjdumpFunction(InstructionSequence):
 
         first_line -- string from the first line of a function from objdump output that contains its name and start offset
         """
-        InstructionSequence.__init__(self)
         self.start, self.name = ObjdumpFunction.FIRST_LINE_PATTERN.findall(first_line)[0]
         self.jump_blocks = []
+        self.instructions = []
 
     def add_instruction(self, line):
         """Adds an instruction object (initialized from line) to self.instructions
@@ -53,7 +56,6 @@ class ObjdumpFunction(InstructionSequence):
         """
         self.instructions.append(Instruction(line))
 
-    # todo: this can probably be done while we're adding lines
     def extract_jump_blocks(self):
         """Extracts suitable subsets from self.instructions and stores them in self.jump_blocks
 
@@ -72,6 +74,16 @@ class ObjdumpFunction(InstructionSequence):
                 if inst.operator_type == "JUMP":
                     # only add jump blocks since branches would add complexity
                     # todo: make exclusion of branches configurable?
-                    self.jump_blocks.append(block)
+                    self.jump_blocks.append(InstructionSequence(block))
                 block = []
             i += 1
+
+    def search(self, pattern_str, disallowed_registers=None, desired_jump_register=None):
+        rop_gadgets = []
+        pattern = InstructionSequence.extract_search_criteria(pattern_str)
+        for block in self.jump_blocks:
+            result = block.search(pattern, disallowed_registers, desired_jump_register)
+            if result:
+                rop_gadgets.append(result)
+
+        return rop_gadgets

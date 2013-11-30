@@ -114,6 +114,19 @@ class ObjdumpFunctionTests(unittest.TestCase):
         fxn = self.create_objdump_function_from_string_list([
             "sw ra,28(sp)",
             "move t9,s0",
+            "sw s1,32(sp)",
+            "jalr t9",
+            "move at,at"
+        ])
+        fxn.extract_jump_blocks()
+        gadget = fxn.search("sw s1", None, "t9")
+        self.assertEqual(gadget[0][0].operator, "move")
+        self.assertEqual(gadget[0][0].operands[0], "t9")
+
+    def test_move_to_jump_register_included_when_search_for_reg_change(self):
+        fxn = self.create_objdump_function_from_string_list([
+            "sw ra,28(sp)",
+            "move t9,s0",
             "lw s1,32(sp)",
             "jalr t9",
             "move at,at"
@@ -137,16 +150,13 @@ class ObjdumpFunctionTests(unittest.TestCase):
         self.assertEqual(gadget[0][0].operator, "lw")
         self.assertEqual(gadget[0][0].operands[0], "s1")
 
-    def test_match_includes_move_when_jump_register_disallowed(self):
+    def test_no_match_if_change_to_destination_register_after_matched_instruction(self):
         fxn = self.create_objdump_function_from_string_list([
-            "sw ra,28(sp)",
-            "move t9,s0",
             "lw s2,36(sp)",
-            "lw s1,32(sp)",
+            "lw s2,32(sp)",
             "jalr t9",
             "move at,at"
         ])
         fxn.extract_jump_blocks()
-        gadget = fxn.search("lw s1", ["t9"], "t9")
-        self.assertEqual(gadget[0][0].operator, "move")
-        self.assertEqual(gadget[0][0].operands[0], "t9")
+        gadget = fxn.search("lw s2")
+        self.assertEqual(gadget[0][0].operands[1], "32(sp)")
