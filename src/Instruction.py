@@ -2,8 +2,8 @@ import re
 
 
 class Instruction:
-    #                                     |offset        |   |hex inst |      |optr       |      |opds|
-    INSTRUCTION_LINE_PATTERN = re.compile(r'\s*([a-f0-9]+):\s+[a-f0-9]{8}\s+(?:([a-z0-9]+)(?:\s+(.+))?)')
+    #                                     |offset        |    |raw inst   |    |optr       |      |opds|
+    INSTRUCTION_LINE_PATTERN = re.compile(r'\s*([a-f0-9]+):\s+([a-f0-9]{8})\s+(?:([a-z0-9]+)(?:\s+(.+))?)')
 
     OP_TYPES = {
         'ARITHMETIC': ['add', 'addu', 'addi', 'addiu', 'div', 'divu', 'mult', 'multu', 'sub', 'subu'],
@@ -36,8 +36,9 @@ class Instruction:
 
         line -- string consisting of a line from a function in objdump output that contains its offset, operator, and operands
         """
-        offset, operator, operands = Instruction.INSTRUCTION_LINE_PATTERN.findall(line)[0]
+        offset, raw, operator, operands = Instruction.INSTRUCTION_LINE_PATTERN.findall(line)[0]
         self.offset = offset
+        self.raw = raw
         self.operands = operands.split(',')
         self.operator = operator
         try:
