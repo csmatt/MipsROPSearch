@@ -28,15 +28,14 @@ def main():
         print_help_message([e])
         exit()
 
-    functions = ObjdumpHandler.extract_functions_from_objdump_lines(objdump_lines)
 
     jump_register = sys.argv[3] if len(sys.argv) > 3 else None
 
     disallowed_registers = Utils.build_register_list_from_pattern(sys.argv[4]) if len(sys.argv) > 4 else []
 
-    for function in functions:
-        rop_gadgets = function.search(sys.argv[2], disallowed_registers, jump_register)
-        Utils.print_list(rop_gadgets)
+    ObjdumpHandler.extract_functions_from_objdump_lines(objdump_lines)
+    rop_gadgets = ObjdumpHandler.search(sys.argv[2], disallowed_registers, jump_register)
+    Utils.print_list(rop_gadgets)
 
 if __name__ == '__main__':
     main()

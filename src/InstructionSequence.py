@@ -68,7 +68,7 @@ class InstructionSequence(list):
         disallowed_registers -- list of registers that must not be changed in the list of Instructions returned
         """
         start_index = len(self)-len(potential_gadget)
-        new_start_index = self._include_copy_to_jump_register_helper(start_index)
+        new_start_index = self._get_last_change_to_jump_register(start_index)
         new_potential_gadget = self[new_start_index:]
         if (
             new_start_index != start_index and
@@ -81,8 +81,8 @@ class InstructionSequence(list):
             # no disallowed registers changed values, add this gadget
             return potential_gadget
 
-    def _include_copy_to_jump_register_helper(self, index):
-        """Attempts to find and return the index of a controllable jump instruction
+    def _get_last_change_to_jump_register(self, index):
+        """Attempts to find and return the index of the instruction closest to the jump that changed the jump register
 
         index -- the index to return if a qualifying move instruction is not found
         """
@@ -119,6 +119,25 @@ class InstructionSequence(list):
 
         return desired_operator, desired_first_operand_registers, desired_operands
 
+    @staticmethod
+    def get_search_criteria(pattern):
+        """
+        If pattern is a string, InstructionSequence.extract_search_criteria is called to get the search criteria tuple.
+        If pattern is already a search criteria tuple, it is returned as-is.
+        """
+        if type(pattern) == str:
+            pattern = InstructionSequence.extract_search_criteria(pattern)
+        return pattern
+
+    def instruction_matches(self, instruction_index, desired_operator, desired_first_operand_registers, desired_operands):
+        instruction = self[instruction_index]
+        return (
+            instruction.operator == desired_operator and
+            instruction.operands[0] in desired_first_operand_registers and
+            instruction.check_other_operands_match(desired_operands) and
+            self.register_changes.get(instruction.operands[0], -1) <= instruction_index
+        )
+
     def search(self, pattern, disallowed_registers=None, desired_jump_register=None):
         """Searches for and returns portions of this InstructionSequence that match criteria
 
@@ -149,13 +168,7 @@ class InstructionSequence(list):
 
         # iterate over the instructions in order and return the first one that matches the criteria
         for inst_index in xrange(len(self)):
-            instruction = self[inst_index]
-            if (
-                instruction.operator == desired_operator and
-                instruction.operands[0] in desired_first_operand_registers and
-                instruction.check_other_operands_match(desired_operands) and
-                self.register_changes.get(instruction.operands[0], -1) <= inst_index
-            ):
+            if self.instruction_matches(inst_index, desired_operator, desired_first_operand_registers, desired_operands):
                 potential_gadget = self._include_copy_to_jump_register(self[inst_index:], disallowed_registers)
                 if potential_gadget:
                     rop_gadget = potential_gadget

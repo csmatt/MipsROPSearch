@@ -25,7 +25,7 @@ def build_register_list_from_pattern(register_list_pattern):
 
 def print_list(l, depth=0, last_was_list=False):
     """recursively prints contents of lists of lists"""
-    if type(l) == list:
+    if isinstance(l, list):
         for i in l:
             print_list(i, depth+1, True)
         if last_was_list:

@@ -1,15 +1,19 @@
 import unittest
-from src.ObjdumpHandler import ObjdumpFunction
+import src.ObjdumpHandler as ObjdumpHandler
 
 
 class ObjdumpFunctionTests(unittest.TestCase):
 
+    def setUp(self):
+        ObjdumpHandler.ALL_JUMP_BLOCKS = []
+    
     def create_objdump_function_from_string_list(self, string_list):
         offset = 0
-        objdump_function = ObjdumpFunction("%04d <function_name>:" % offset)
+        objdump_function = ObjdumpHandler.ObjdumpFunction("%04d <function_name>:" % offset)
         for inst_index in range(len(string_list)):
             offset = inst_index
             objdump_function.add_instruction("%04d: %08d %s" % (offset, 0, string_list[inst_index]))
+        objdump_function.extract_jump_blocks()
         return objdump_function
 
     def test_branch_and_its_delay_slot_instructions_excluded_from_jump_blocks(self):
@@ -19,7 +23,6 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "jalr t9",
                 "addiu a1,s3,10396"
         ])
-        fxn.extract_jump_blocks()
         self.assertEqual(len(fxn.jump_blocks[0]), 2)
         self.assertEqual(fxn.jump_blocks[0][0].operator, "jalr")
 
@@ -30,7 +33,6 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "jr t9",
                 "addiu a1,s3,10396"
         ])
-        fxn.extract_jump_blocks()
         self.assertEqual(len(fxn.jump_blocks), 2)
 
     def test_match_on_delay_slot_includes_jump(self):
@@ -40,8 +42,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "addiu a1,s3,10396"
 
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("addiu a1,s3,10396")
+        gadget = ObjdumpHandler.search("addiu a1,s3,10396")
         self.assertEqual(gadget[0][0].operator, "jalr")
 
     def test_no_match_when_jump_register_does_not_match(self):
@@ -51,8 +52,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "addiu a1,s3,10396"
 
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("addiu a1,s3,10396", None, "t8")
+        gadget = ObjdumpHandler.search("addiu a1,s3,10396", None, "t8")
         self.assertEqual(len(gadget), 0)
 
     def test_no_match_when_disallowed_register_changed_in_delay_slot(self):
@@ -62,8 +62,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "addiu a1,s3,10396"
 
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("addiu a1,s3,10396", ["a1"], "t8")
+        gadget = ObjdumpHandler.search("addiu a1,s3,10396", ["a1"], "t8")
         self.assertEqual(len(gadget), 0)
 
     def test_disallowed_register_change_is_excluded(self):
@@ -72,8 +71,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "jalr t9",
                 "addiu a1,s3,10396"
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("addiu a1,s3,10396", ["a0"])
+        gadget = ObjdumpHandler.search("addiu a1,s3,10396", ["a0"])
         self.assertTrue(gadget[0][0].operator.startswith("jalr"))
 
     def test_match_on_non_change_instruction(self):
@@ -83,8 +81,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "addiu a1,s3,10396"
 
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("sw ra,sp")
+        gadget = ObjdumpHandler.search("sw ra,sp")
         self.assertTrue(gadget[0][0].operator.startswith("sw"))
 
     def test_no_match_when_second_operand_not_matched(self):
@@ -94,8 +91,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "addiu a1,s3,10396"
 
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("sw ra,24(sp)")
+        gadget = ObjdumpHandler.search("sw ra,24(sp)")
         self.assertEqual(len(gadget), 0)
 
     def test_match_on_wildcarded_first_operand(self):
@@ -104,10 +100,9 @@ class ObjdumpFunctionTests(unittest.TestCase):
                 "jalr t9",
                 "addiu a1,s3,10396"
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("move a*,s0")
+        gadget = ObjdumpHandler.search("move a*,s0")
         self.assertEqual(gadget[0][0].operator, "move", "single wildcard failed.")
-        gadget = fxn.search("move **,s0")
+        gadget = ObjdumpHandler.search("move **,s0")
         self.assertEqual(gadget[0][0].operator, "move", "double wildcard failed.")
 
     def test_move_to_jump_register_included(self):
@@ -118,8 +113,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
             "jalr t9",
             "move at,at"
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("sw s1", None, "t9")
+        gadget = ObjdumpHandler.search("sw s1", None, "t9")
         self.assertEqual(gadget[0][0].operator, "move")
         self.assertEqual(gadget[0][0].operands[0], "t9")
 
@@ -131,8 +125,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
             "jalr t9",
             "move at,at"
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("lw s1", None, "t9")
+        gadget = ObjdumpHandler.search("lw s1", None, "t9")
         self.assertEqual(gadget[0][0].operator, "move")
         self.assertEqual(gadget[0][0].operands[0], "t9")
 
@@ -145,8 +138,7 @@ class ObjdumpFunctionTests(unittest.TestCase):
             "jalr t9",
             "move at,at"
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("lw s1", ["s2"], "t9")
+        gadget = ObjdumpHandler.search("lw s1", ["s2"], "t9")
         self.assertEqual(gadget[0][0].operator, "lw")
         self.assertEqual(gadget[0][0].operands[0], "s1")
 
@@ -157,6 +149,5 @@ class ObjdumpFunctionTests(unittest.TestCase):
             "jalr t9",
             "move at,at"
         ])
-        fxn.extract_jump_blocks()
-        gadget = fxn.search("lw s2")
+        gadget = ObjdumpHandler.search("lw s2")
         self.assertEqual(gadget[0][0].operands[1], "32(sp)")

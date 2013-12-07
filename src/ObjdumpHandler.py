@@ -3,6 +3,10 @@ from Instruction import Instruction
 from InstructionSequence import InstructionSequence
 
 
+ALL_JUMP_BLOCKS = []
+OBJDUMP_FUNCTIONS = []
+
+
 def extract_functions_from_objdump_lines(objdump_lines):
     """Returns a list of ObjdumpFunctions created by parsing lines from objdump output's .text section"""
     # we only care about the .text section, so we'll find where it is so we know where to start from
@@ -29,7 +33,27 @@ def extract_functions_from_objdump_lines(objdump_lines):
         elif line.startswith("Disassembly of section"):
             # we hit a section that isn't .text, we're done here
             break
+
+    global OBJDUMP_FUNCTIONS
+    OBJDUMP_FUNCTIONS = functions
     return functions
+
+
+def find_function(name):
+    for fxn in OBJDUMP_FUNCTIONS:
+        if fxn.name == name:
+            return fxn
+
+
+def search(pattern_str, disallowed_registers=None, desired_jump_register=None):
+    rop_gadgets = []
+    pattern = InstructionSequence.extract_search_criteria(pattern_str)
+    for block in ALL_JUMP_BLOCKS:
+        result = block.search(pattern, disallowed_registers, desired_jump_register)
+        if result:
+            rop_gadgets.append(result)
+
+    return rop_gadgets
 
 
 class ObjdumpFunction:
@@ -73,17 +97,9 @@ class ObjdumpFunction:
                 i += 1
                 if inst.operator_type == "JUMP":
                     # only add jump blocks since branches would add complexity
-                    # todo: make exclusion of branches configurable?
                     self.jump_blocks.append(InstructionSequence(block))
                 block = []
             i += 1
 
-    def search(self, pattern_str, disallowed_registers=None, desired_jump_register=None):
-        rop_gadgets = []
-        pattern = InstructionSequence.extract_search_criteria(pattern_str)
-        for block in self.jump_blocks:
-            result = block.search(pattern, disallowed_registers, desired_jump_register)
-            if result:
-                rop_gadgets.append(result)
-
-        return rop_gadgets
+        global ALL_JUMP_BLOCKS
+        ALL_JUMP_BLOCKS.extend(self.jump_blocks)
