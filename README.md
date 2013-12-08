@@ -3,12 +3,12 @@ MipsROPSearch
 
 Assists in finding ROP gadgets in output from objdump
 
-MipsROPSearch.py FILE INSTRUCTION JUMP_REGISTER [DISALLOWED_REGISTERS]
+MipsROPSearch.py FILE 'SEARCH_PATTERN' JUMP_REGISTER [DISALLOWED_REGISTERS]
 
 #### FILE: 
 - path to a file created by running *objdump -d* on a MIPS binary and outputting it to a file
 
-#### INSTRUCTION: must be surrounded with quotes
+#### SEARCH_PATTERN: must be surrounded with quotes
 - should be of the form: "OPERATOR REGISTER[,OPERAND1,OPERAND2]"
 - OPERATOR must be an operator that causes a change in REGISTER: example operators lw, addiu, move
 - REGISTER is the destination register and can have wildcards: ** matches a-, s-, t-registers, and ra; _s*_ matches all s-registers

@@ -6,7 +6,7 @@ import Utils
 
 
 def print_help_message(additional_lines=None):
-    print "\n_usage: MipsROPSearch FILE INSTRUCTION [JUMP_REGISTER] [DISALLOWED_REGISTERS]\n"
+    print "\nUsage: MipsROPSearch.py FILE 'SEARCH_PATTERN' [JUMP_REGISTER] [DISALLOWED_REGISTERS]\n"
     if additional_lines:
         for line in additional_lines:
             print "\t%s" % line
