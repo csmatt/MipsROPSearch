@@ -1,5 +1,5 @@
-from ROP import GadgetType, Gadget
-from InstructionSequence import InstructionSequence
+from rop import GadgetType, Gadget
+from objdump_handler import InstructionSequence
 
 
 class SRegisterLoads(GadgetType):
@@ -83,16 +83,14 @@ class CallToSleep(GadgetType):
 
 
 class StackLocator(GadgetType):
-    """
-    Searches for gadgets that save a relative stack location to a register
-    """
+    """Searches for gadgets that save a relative stack location to a register"""
+
     search_pattern = "addiu **,sp"
 
 
 class ControllableJump(GadgetType):
-    """
-    Searches for controllable jump gadgets and prioritizes those with the fewest instructions
-    """
+    """Searches for controllable jump gadgets and prioritizes those with the fewest instructions"""
+
     search_pattern = "move **"
     reverse_search_results = True
 

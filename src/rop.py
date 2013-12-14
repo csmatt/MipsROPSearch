@@ -1,22 +1,19 @@
-from InstructionSequence import InstructionSequence
-import ObjdumpHandler
+import objdump_handler
 
 
-class Builder:
+class Builder(object):
+    """For building a sequence of ROP gadgets from subclasses of GadgetType"""
 
     def __init__(self, pipeline):
-        """
-        pipeline -- list of GadgetType objects in the same order as the desire rop sequence
-        """
+        """pipeline -- list of GadgetType objects in the same order as the desire rop sequence"""
         self.pipeline = pipeline
 
     def run(self):
-        """
-        Processes the pipeline and returns a valid rop sequence or None if not possible
+        """Processes the pipeline and returns a valid rop sequence or None if not possible
 
         :raises Exception: if no gadgets are found for one of the gadget types in self.pipeline
         """
-        for pipe in self.pipeline:
+        for i, pipe in enumerate(self.pipeline):
             if not pipe.rop_gadgets:
                 # there's no sense attempting to build if we don't have all the materials
                 # usefully notifies of a failure early (and the cause) especially since, if the last pipe is empty,
@@ -27,11 +24,15 @@ class Builder:
 
     @staticmethod
     def build(pipeline, fresh_registers, rop_sequence):
-        """
-        Returns the first valid sequence of gadgets encountered by recursively calling itself, advancing through the
+        """Returns the first valid sequence of gadgets encountered by recursively calling itself, advancing through the
         pipeline as gadgets are found that are valid for in the context of rop_sequence.
         If a gadget fitting into the sequence cannot be found, the method returns and picks up where it left off for the
         previous gadget type in the pipeline.
+
+        pipeline -- list containing GadgetType classes in the same order that's desired for rop_sequence
+                    each recursive call causes pipeline to start with the next GadgetType
+        fresh_registers -- list of registers currently available for use
+        rop_sequence -- the current list of Gadgets up to but not including pipeline[0] that are compatible
         """
         crnt_gadget_type = pipeline[0]
         for gadget in crnt_gadget_type.rop_gadgets:
@@ -49,28 +50,29 @@ class Builder:
         return None
 
     @staticmethod
-    def intersect(a, b):
-        """Returns the list of gadgets with common offsets for their last instructions
+    def intersect(gadgets_a, gadgets_b):
+        """Returns the list of Gadgets where a Gadget from gadgets_a was contained within a Gadget from gadgets_b or
+        vice-versa.
 
-        The function works by iterating over a and b individually
-        to make maps of each InstructionSequence's last Instruction's offset to the InstructionSequence
-        and sets of those offsets. The sets are then intersected and the offsets are used to look up
-        the InstructionSequences. The larger of the two InstructionSequences will contain the smaller one,
+        The function works by iterating over gadgets_a and gadgets_b individually
+        making maps of each Gadget's last Instruction's offset to the Gadget itself
+        and making sets of those offsets. The sets are then intersected and the offsets are used to look up the Gadgets.
+        The larger of the two Gadgets will always contain the smaller one,
         so it is added to the list of common gadgets that will be returned.
 
-        a -- list of InstructionSequence objects
-        b -- list of InstructionSequence objects
+        gadgets_a -- list of Gadget objects
+        gadgets_b -- list of Gadget objects
         """
         a_map_last_offset_to_gadget = {}
         a_offset_set = set()
-        for gadget in a.rop_gadgets:
+        for gadget in gadgets_a:
             offset = gadget[-1].offset
             a_map_last_offset_to_gadget[offset] = gadget
             a_offset_set.add(offset)
 
         b_map_last_offset_to_gadget = {}
         b_offset_set = set()
-        for gadget in b.rop_gadgets:
+        for gadget in gadgets_b:
             offset = gadget[-1].offset
             b_map_last_offset_to_gadget[offset] = gadget
             b_offset_set.add(offset)
@@ -86,14 +88,15 @@ class Builder:
         return common_gadgets
 
 
-class Gadget(InstructionSequence):
+class Gadget(objdump_handler.InstructionSequence):
+    """Subclasses InstructionSequence to track properties used by rop.Builder"""
 
     def __init__(self, gadget, gadget_type):
         """
         gadget -- InstructionSequence object to initialize with
         gadget_type -- the subclass of GadgetType that describes this gadget
         """
-        InstructionSequence.__init__(self, gadget)
+        objdump_handler.InstructionSequence.__init__(self, gadget)
         self.type = gadget_type
         self.fresh_registers = set()
         self.dependent_registers = set()
@@ -114,20 +117,22 @@ class Gadget(InstructionSequence):
                     self.dependent_registers.add(instruction.operands[1])
 
     def find_matching_instruction(self, pattern=None):
-        """
-        Uses pattern to find the first matching instruction in this gadget.
+        """Uses pattern to find the first matching instruction in this gadget.
 
-        pattern -- None, search string, or search_criteria tuple.
-                   If None, self.type.search_pattern will be used.
+        pattern -- if is None:
+                       self.type.search_pattern will be used.
+                   else:
+                       string in the 'search pattern' format or search criteria tuple
+                       (see: InstructionSequence.extract_search_criteria())
         """
         pattern = pattern if pattern is not None else self.type.search_pattern
-        search_criteria = InstructionSequence.get_search_criteria(pattern)
+        search_criteria = objdump_handler.InstructionSequence.get_search_criteria(pattern)
         for i in xrange(len(self)):
             if self.instruction_matches(i, *search_criteria):
                 return self[i]
 
 
-class GadgetType:
+class GadgetType(object):
 
     search_pattern = None  # must specify in subclass
     reverse_search_results = False
@@ -137,11 +142,10 @@ class GadgetType:
         self.search()
 
     def search(self):
+        """Finds all instruction sequences in objdump_handler that match self.search_pattern and contain
+        controllable jumps and stores them as Gadget objects in self.rop_gadgets and orders them by self.prioritize()
         """
-        Finds all instruction sequences in ObjdumpHandler that match self.search_pattern and contain controllable jumps
-        and stores them as Gadget objects in self.rop_gadgets in an order defined by self.prioritize()
-        """
-        results = ObjdumpHandler.search(self.search_pattern)
+        results = objdump_handler.search(self.search_pattern)
         for result in results:
             gadget = Gadget(result, self.__class__)
             if gadget.has_controllable_jump:
@@ -151,8 +155,7 @@ class GadgetType:
         return self.rop_gadgets
 
     def is_compatible(self, gadget, previous_gadget, fresh_registers):
-        """
-        Returns True if gadget is compatible with previous_gadget and fresh_registers.
+        """Returns True if gadget is compatible with previous_gadget and fresh_registers.
         For gadget to be compatible, its dependent_registers must all be contained in fresh_registers
 
         gadget -- the Gadget object being checked for compatibility
@@ -163,8 +166,7 @@ class GadgetType:
 
     @classmethod
     def prioritize(cls, gadget):
-        """
-        By default, rop_gadgets is prioritized its length in descending order
-        so that gadgets with the fewest side effects come first
+        """By default, rop_gadgets is prioritized its length in descending order
+        so that gadgets with the fewest side effects come first.
         """
         return len(gadget)

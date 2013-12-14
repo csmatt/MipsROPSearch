@@ -6,7 +6,7 @@ register_list_single_pattern = re.compile(r'([a-z0-9]{2})')
 
 
 def build_register_list_from_pattern(register_list_pattern):
-    """returns a list of register names created by expanding expressions defining one or more register names"""
+    """Returns a list of register names created by expanding expressions defining one or more register names"""
     register_list_parts = register_list_pattern.split(',')
     register_list = []
     for part in register_list_parts:
@@ -24,7 +24,7 @@ def build_register_list_from_pattern(register_list_pattern):
 
 
 def print_list(l, depth=0, last_was_list=False):
-    """recursively prints contents of lists of lists"""
+    """Recursively prints contents of lists of lists"""
     if isinstance(l, list):
         for i in l:
             print_list(i, depth+1, True)

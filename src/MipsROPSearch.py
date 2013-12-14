@@ -1,8 +1,8 @@
 #!/usr/bin/python
 
 import sys
-import ObjdumpHandler
-import Utils
+import objdump_handler
+import utils
 
 
 def print_help_message(additional_lines=None):
@@ -28,14 +28,13 @@ def main():
         print_help_message([e])
         exit()
 
-
     jump_register = sys.argv[3] if len(sys.argv) > 3 else None
 
-    disallowed_registers = Utils.build_register_list_from_pattern(sys.argv[4]) if len(sys.argv) > 4 else []
+    disallowed_registers = utils.build_register_list_from_pattern(sys.argv[4]) if len(sys.argv) > 4 else []
 
-    ObjdumpHandler.extract_functions_from_objdump_lines(objdump_lines)
-    rop_gadgets = ObjdumpHandler.search(sys.argv[2], disallowed_registers, jump_register)
-    Utils.print_list(rop_gadgets)
+    objdump_handler.extract_functions_from_objdump_lines(objdump_lines)
+    rop_gadgets = objdump_handler.search(sys.argv[2], disallowed_registers, jump_register)
+    utils.print_list(rop_gadgets)
 
 if __name__ == '__main__':
     main()
