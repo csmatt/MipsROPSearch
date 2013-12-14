@@ -5,6 +5,13 @@ ALL_JUMP_BLOCKS = []
 OBJDUMP_FUNCTIONS = []
 
 
+def parse_objdump_output_file(file_path):
+    f = open(file_path, 'r')
+    objdump_lines = f.readlines()
+    f.close()
+    extract_functions_from_objdump_lines(objdump_lines)
+
+
 def extract_functions_from_objdump_lines(objdump_lines):
     """Returns a list of ObjdumpFunctions created by parsing lines from objdump output's .text section"""
 

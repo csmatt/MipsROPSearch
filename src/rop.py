@@ -5,8 +5,12 @@ class Builder(object):
     """For building a sequence of ROP gadgets from subclasses of GadgetType"""
 
     def __init__(self, pipeline):
-        """pipeline -- list of GadgetType objects in the same order as the desire rop sequence"""
+        """
+        pipeline -- list of GadgetType objects in the same order as the desire rop sequence
+        """
         self.pipeline = pipeline
+        self.rop_sequence = []
+        self.rop_sequence_offsets = []
 
     def run(self):
         """Processes the pipeline and returns a valid rop sequence or None if not possible
@@ -17,13 +21,15 @@ class Builder(object):
             if not pipe.rop_gadgets:
                 # there's no sense attempting to build if we don't have all the materials
                 # usefully notifies of a failure early (and the cause) especially since, if the last pipe is empty,
-                # recursive calls to Builder.build will iterate over every gadget of every pipe only to return None
+                # recursive calls to Builder._build will iterate over every gadget of every pipe only to return None
                 raise Exception("No gadgets found for type: %s. Canceling build." % pipe.__class__.__name__)
 
-        return Builder.build(self.pipeline, set(), [])
+        result = Builder._build(self.pipeline, set(), [])
+        self.rop_sequence = result if result else []
+        self.rop_sequence_offsets = [gadget[0].offset for gadget in self.rop_sequence]
 
     @staticmethod
-    def build(pipeline, fresh_registers, rop_sequence):
+    def _build(pipeline, fresh_registers, rop_sequence):
         """Returns the first valid sequence of gadgets encountered by recursively calling itself, advancing through the
         pipeline as gadgets are found that are valid for in the context of rop_sequence.
         If a gadget fitting into the sequence cannot be found, the method returns and picks up where it left off for the
@@ -42,7 +48,7 @@ class Builder(object):
                     next_fresh_registers = fresh_registers.copy()
                     next_fresh_registers.difference_update(gadget.dependent_registers)
                     next_fresh_registers.update(gadget.fresh_registers)
-                    result = Builder.build(pipeline[1:], next_fresh_registers, new_sequence)
+                    result = Builder._build(pipeline[1:], next_fresh_registers, new_sequence)
                     if result is not None:
                         return result
                 else:
