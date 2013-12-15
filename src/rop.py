@@ -46,8 +46,11 @@ class Builder(object):
                 new_sequence = rop_sequence + [gadget]
                 if len(pipeline) > 1:
                     next_fresh_registers = fresh_registers.copy()
-                    next_fresh_registers.difference_update(gadget.dependent_registers)
-                    next_fresh_registers.update(gadget.fresh_registers)
+                    # update by removing any dependent registers since they were used by gadget
+                    # and by removing all registers gadget changed with an operator that wasn't 'move', 'lw', or 'addiu'
+                    next_fresh_registers -= gadget.dependent_registers | gadget.stale_registers
+                    # update by adding all registers that gadget loaded with fresh memory values
+                    next_fresh_registers |= gadget.fresh_registers
                     result = Builder._build(pipeline[1:], next_fresh_registers, new_sequence)
                     if result is not None:
                         return result
@@ -106,21 +109,33 @@ class Gadget(objdump_handler.InstructionSequence):
         self.type = gadget_type
         self.fresh_registers = set()
         self.dependent_registers = set()
+        # registers to be removed from fresh_registers during build
+        # since they were changed that is not a memory location
+        self.stale_registers = set()
 
         # use self._get_last_change_to_jump_register giving it len(self) as the default index
         # to return if no controllable jump is found (so that it being returned means no controllable jump was found)
         self.has_controllable_jump = self._get_last_change_to_jump_register(len(self)) != len(self)
 
         for instruction in self:
-            if instruction.operator == 'lw':
-                self.fresh_registers.add(instruction.operands[0])
-            elif instruction.operator == 'move':
-                # maintain fresh and dependent register sets for 'move' instructions
-                # TODO: can't reliably use 'lw' until we start keeping track of changes to $sp
-                if instruction.operands[1] in self.fresh_registers:
-                    self.fresh_registers.remove(instruction.operands[1])
+            if instruction.operator_type in objdump_handler.Instruction.CHANGE_OP_TYPES:
+                if (
+                    instruction.operator == 'lw' or
+                    (instruction.operator == 'addiu' and instruction.operands[1] == 'sp')
+                ):
+                    self.fresh_registers.add(instruction.operands[0])
+                elif instruction.operator == 'move':
+                    # maintain fresh and dependent register sets for 'move' instructions
+                    # TODO: can't reliably use 'lw' until we start keeping track of changes to $sp
+                    if instruction.operands[1] in self.fresh_registers:
+                        self.fresh_registers.remove(instruction.operands[1])
+                    else:
+                        self.dependent_registers.add(instruction.operands[1])
                 else:
-                    self.dependent_registers.add(instruction.operands[1])
+                    # operation that changes a register, but to a value that isn't a memory address (ex: li)
+                    if instruction.operands[0] in self.fresh_registers:
+                        self.fresh_registers.remove(instruction.operands[0])
+                    self.stale_registers.add(instruction.operands[0])
 
     def find_matching_instruction(self, pattern=None):
         """Uses pattern to find the first matching instruction in this gadget.
