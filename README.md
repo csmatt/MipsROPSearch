@@ -64,4 +64,4 @@ Several `GadgetType` subclasses are available and it is relatively easy to add n
         gadget_types.ControllableJump(ensure_compatible=True)
     ])
     builder.run()
-    print builder.rop_sequence_offsets
+    utils.print_list(builder.rop_sequence)
